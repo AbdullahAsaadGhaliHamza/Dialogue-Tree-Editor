@@ -1,0 +1,1407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dialogue Tree Editor</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root {
+  --font-ui: -apple-system,'Segoe UI',system-ui,sans-serif;
+  --font-mono: 'Cascadia Code','Fira Code','Consolas','Courier New',monospace;
+  --bg:#111318; --surface:#181c23; --surface2:#1e2330;
+  --border:#272d3d; --border2:#323a4f;
+  --accent:#4f8ef7; --accent-dim:rgba(79,142,247,0.15);
+  --accent2:#e85d75; --accent3:#f7c44f; --accent4:#4fca8e;
+  --text:#c8cfe0; --text2:#7a8499; --text3:#4a5168;
+  --node-npc:#1a2340; --node-npc-b:#2d4a8a;
+  --node-player:#1a2e26; --node-player-b:#2d7a5a;
+  --node-start:#2a1f10; --node-start-b:#c47a20;
+  --node-end:#2a1020; --node-end-b:#8a2d50;
+  --shadow:0 4px 24px rgba(0,0,0,0.5);
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:13px;user-select:none}
+
+/* TOOLBAR */
+#toolbar{position:fixed;top:0;left:0;right:0;height:46px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:3px;padding:0 10px;z-index:100}
+#toolbar .logo{font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--accent);letter-spacing:.06em;margin-right:10px;white-space:nowrap}
+.tb-sep{width:1px;height:22px;background:var(--border);margin:0 5px;flex-shrink:0}
+.tb-btn{height:30px;padding:0 10px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:4px;cursor:pointer;font-family:var(--font-ui);font-size:12px;font-weight:500;display:flex;align-items:center;gap:5px;transition:all .12s;white-space:nowrap;flex-shrink:0}
+.tb-btn:hover{border-color:var(--border2);color:var(--text);background:var(--surface2)}
+.tb-btn.accent{border-color:var(--accent);color:var(--accent)}
+.tb-btn.accent:hover{background:var(--accent-dim)}
+.tb-btn:disabled{opacity:.35;cursor:not-allowed}
+.tb-btn svg{flex-shrink:0}
+#project-name{background:transparent;border:none;color:var(--text);font-family:var(--font-ui);font-size:13px;font-weight:600;outline:none;width:160px}
+#project-name::placeholder{color:var(--text3)}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:3px}
+.fmt-tab{height:28px;padding:0 10px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:3px;cursor:pointer;font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;transition:all .12s}
+.fmt-tab.active{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.fmt-tab:hover:not(.active){color:var(--text2);border-color:var(--border2)}
+#undo-count{font-size:10px;color:var(--text3);font-family:var(--font-mono);padding:0 4px;min-width:28px;text-align:center}
+
+/* SEARCH BAR */
+#search-bar{position:fixed;top:46px;left:0;right:280px;height:0;overflow:hidden;background:var(--surface);border-bottom:1px solid var(--border);z-index:90;transition:height .15s;display:flex;align-items:center;padding:0 14px;gap:8px}
+#search-bar.open{height:38px}
+#search-input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:12px;padding:5px 9px;border-radius:4px;outline:none;transition:border-color .12s}
+#search-input:focus{border-color:var(--accent)}
+#search-results{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;max-width:60%}
+#search-results::-webkit-scrollbar{height:3px}
+#search-results::-webkit-scrollbar-thumb{background:var(--border2)}
+.search-result-chip{padding:3px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:3px;font-size:11px;font-family:var(--font-mono);color:var(--text2);cursor:pointer;white-space:nowrap;transition:all .1s;flex-shrink:0}
+.search-result-chip:hover{border-color:var(--accent);color:var(--accent)}
+#search-count{font-size:11px;color:var(--text3);white-space:nowrap;flex-shrink:0}
+#search-close{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 6px}
+#search-close:hover{color:var(--text)}
+
+/* CANVAS */
+#canvas-wrap{position:fixed;top:46px;left:0;right:280px;bottom:28px;overflow:hidden;cursor:default}
+#canvas-wrap.search-open{top:84px}
+#canvas{position:absolute;top:0;left:0;width:6000px;height:6000px;transform-origin:0 0}
+#grid-bg{position:absolute;top:0;left:0;width:100%;height:100%;background-image:radial-gradient(circle,var(--border) 1px,transparent 1px);background-size:28px 28px;opacity:.4;pointer-events:none}
+#connections{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+
+/* SELECTION BOX */
+#sel-box{position:absolute;border:1.5px dashed var(--accent);background:rgba(79,142,247,.06);pointer-events:none;display:none;z-index:5}
+
+/* NODES */
+.node{position:absolute;min-width:210px;max-width:250px;border-radius:8px;border:1.5px solid var(--border2);background:var(--surface2);cursor:grab;box-shadow:var(--shadow);transition:box-shadow .15s}
+.node:active{cursor:grabbing}
+.node.selected{box-shadow:0 0 0 2px var(--accent),var(--shadow)}
+.node.multi-selected{box-shadow:0 0 0 2px var(--accent3),var(--shadow)}
+.node.type-start{border-color:var(--node-start-b);background:var(--node-start)}
+.node.type-end{border-color:var(--node-end-b);background:var(--node-end)}
+.node.type-npc{border-color:var(--node-npc-b);background:var(--node-npc)}
+.node.type-player{border-color:var(--node-player-b);background:var(--node-player)}
+/* color label overrides */
+.node.color-red{border-color:#c0392b!important;background:#2a1010!important}
+.node.color-orange{border-color:#c0702b!important;background:#2a1a10!important}
+.node.color-yellow{border-color:#b8a020!important;background:#272210!important}
+.node.color-green{border-color:#2b9c4a!important;background:#102210!important}
+.node.color-purple{border-color:#7b4fc0!important;background:#1a1030!important}
+.node.color-pink{border-color:#c04080!important;background:#2a1020!important}
+.node-header{padding:8px 10px 6px;display:flex;align-items:center;gap:7px;border-bottom:1px solid rgba(255,255,255,.06)}
+.node-type-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.type-start .node-type-dot{background:var(--accent3)}
+.type-end .node-type-dot{background:var(--accent2)}
+.type-npc .node-type-dot{background:var(--accent)}
+.type-player .node-type-dot{background:var(--accent4)}
+.node.color-red .node-type-dot,.node.color-orange .node-type-dot,.node.color-yellow .node-type-dot,.node.color-green .node-type-dot,.node.color-purple .node-type-dot,.node.color-pink .node-type-dot{background:currentColor}
+.node-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.node-id{font-family:var(--font-mono);font-size:9px;color:var(--text3)}
+.node-body{padding:8px 10px}
+.node-line{font-family:var(--font-mono);font-size:11.5px;color:var(--text);line-height:1.5;word-break:break-word;min-height:28px}
+.node-line.empty{color:var(--text3);font-style:italic}
+.node-footer{padding:4px 10px 6px;display:flex;gap:5px;flex-wrap:wrap}
+.node-tag{font-size:10px;font-family:var(--font-mono);padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.05);color:var(--text3);border:1px solid rgba(255,255,255,.08)}
+.node-color-strip{height:3px;border-radius:0 0 6px 6px;margin-top:2px;display:none}
+.node.color-red .node-color-strip{display:block;background:#c0392b}
+.node.color-orange .node-color-strip{display:block;background:#c0702b}
+.node.color-yellow .node-color-strip{display:block;background:#b8a020}
+.node.color-green .node-color-strip{display:block;background:#2b9c4a}
+.node.color-purple .node-color-strip{display:block;background:#7b4fc0}
+.node.color-pink .node-color-strip{display:block;background:#c04080}
+
+/* PORTS */
+.port{width:13px;height:13px;border-radius:50%;border:2px solid var(--border2);background:var(--surface);cursor:crosshair;position:absolute;transition:all .1s;z-index:10}
+.port:hover{border-color:var(--accent);background:var(--accent);transform:scale(1.2)}
+.port.in{left:-7px;top:50%;transform:translateY(-50%)}
+.port.out{right:-7px;top:50%;transform:translateY(-50%)}
+.port.in:hover{transform:translateY(-50%) scale(1.2)}
+.port.out:hover{transform:translateY(-50%) scale(1.2)}
+.port.connected{border-color:var(--accent);background:var(--accent-dim)}
+
+/* CHOICE PORTS */
+.choices-list{padding:0 10px 8px;display:flex;flex-direction:column;gap:4px}
+.choice-row{display:flex;align-items:center;gap:6px;position:relative;background:rgba(255,255,255,.03);border-radius:4px;padding:5px 8px;border:1px solid rgba(255,255,255,.05)}
+.choice-text{font-size:11.5px;font-family:var(--font-mono);color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.choice-text.empty{color:var(--text3);font-style:italic}
+.choice-port{width:11px;height:11px;border-radius:50%;border:2px solid var(--border2);background:var(--surface);cursor:crosshair;flex-shrink:0;transition:all .1s}
+.choice-port:hover,.choice-port.connected{border-color:var(--accent4);background:var(--accent4)}
+
+/* PANEL */
+#panel{position:fixed;top:46px;right:0;bottom:0;width:280px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;z-index:50}
+#panel-header{padding:12px 16px 10px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:8px}
+#panel-title{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);flex:1}
+#panel-node-count{font-size:10px;font-family:var(--font-mono);color:var(--text3)}
+#panel-body{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+#panel-body::-webkit-scrollbar{width:4px}
+#panel-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.panel-empty{color:var(--text3);font-size:12px;line-height:1.7;padding-top:8px}
+.p-group{display:flex;flex-direction:column;gap:6px}
+.p-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
+.p-input,.p-textarea,.p-select{background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:12px;padding:7px 9px;border-radius:4px;width:100%;outline:none;transition:border-color .12s}
+.p-input:focus,.p-textarea:focus,.p-select:focus{border-color:var(--accent)}
+.p-textarea{resize:vertical;min-height:70px;line-height:1.55}
+.p-select option{background:var(--bg)}
+.choice-editor{display:flex;flex-direction:column;gap:6px}
+.choice-edit-row{display:flex;gap:6px;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px}
+.choice-edit-row input{flex:1;background:transparent;border:none;color:var(--text);font-family:var(--font-mono);font-size:11.5px;outline:none}
+.choice-edit-row input::placeholder{color:var(--text3)}
+.choice-del{background:transparent;border:none;color:var(--text3);cursor:pointer;padding:2px;font-size:14px;line-height:1;transition:color .1s}
+.choice-del:hover{color:var(--accent2)}
+.add-choice-btn{background:transparent;border:1px dashed var(--border2);color:var(--text3);padding:6px;border-radius:4px;cursor:pointer;font-size:11px;font-family:var(--font-ui);transition:all .12s;text-align:center}
+.add-choice-btn:hover{border-color:var(--accent4);color:var(--accent4)}
+.delete-node-btn{background:transparent;border:1px solid var(--border);color:var(--accent2);padding:7px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;font-family:var(--font-ui);transition:all .12s;text-align:center;width:100%}
+.delete-node-btn:hover{background:rgba(232,93,117,.1);border-color:var(--accent2)}
+.dup-node-btn{background:transparent;border:1px solid var(--border);color:var(--text2);padding:7px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;font-family:var(--font-ui);transition:all .12s;text-align:center;width:100%}
+.dup-node-btn:hover{background:var(--surface2);border-color:var(--border2);color:var(--text)}
+.color-swatches{display:flex;gap:5px;flex-wrap:wrap}
+.color-swatch{width:22px;height:22px;border-radius:4px;cursor:pointer;border:2px solid transparent;transition:all .1s;flex-shrink:0}
+.color-swatch:hover{transform:scale(1.15)}
+.color-swatch.active{border-color:#fff}
+.color-swatch.none{background:var(--surface2);border:1px solid var(--border)}
+.multi-panel-info{font-size:12px;color:var(--text2);line-height:1.7}
+.multi-action-btn{background:var(--surface2);border:1px solid var(--border2);color:var(--text2);padding:8px;border-radius:4px;cursor:pointer;font-size:12px;font-family:var(--font-ui);transition:all .12s;text-align:center;width:100%}
+.multi-action-btn:hover{color:var(--text);border-color:var(--text2)}
+.multi-action-btn.danger{border-color:var(--accent2);color:var(--accent2)}
+.multi-action-btn.danger:hover{background:rgba(232,93,117,.1)}
+
+/* CONTEXT MENU */
+#ctx-menu{position:fixed;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:5px;z-index:200;display:none;box-shadow:0 8px 32px rgba(0,0,0,.6);min-width:168px}
+.ctx-item{padding:7px 12px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px;color:var(--text2);transition:all .1s}
+.ctx-item:hover{background:var(--border);color:var(--text)}
+.ctx-item .ctx-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ctx-sep{height:1px;background:var(--border);margin:4px 0}
+.ctx-item.danger{color:var(--accent2)}
+.ctx-item.danger:hover{background:rgba(232,93,117,.1)}
+
+/* TEMP LINE */
+#temp-line{position:fixed;pointer-events:none;z-index:150;display:none}
+
+/* MINIMAP */
+#minimap{position:fixed;bottom:36px;left:16px;width:150px;height:96px;background:rgba(24,28,35,.92);border:1px solid var(--border2);border-radius:6px;overflow:hidden;z-index:60}
+#minimap canvas{width:100%;height:100%}
+
+/* TOAST */
+#toast{position:fixed;bottom:36px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:7px 18px;border-radius:6px;font-size:12px;z-index:300;opacity:0;transition:all .18s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* EXPORT MODAL */
+#export-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:400;display:none;align-items:center;justify-content:center}
+#export-modal.open{display:flex}
+#export-box{background:var(--surface);border:1px solid var(--border2);border-radius:8px;width:660px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 16px 60px rgba(0,0,0,.7)}
+#export-box-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;position:relative}
+#export-box-title{font-weight:700;font-size:13px;flex:1}
+#export-copy-btn{position:absolute;right:52px;top:50%;transform:translateY(-50%);background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--font-ui);font-weight:600}
+#export-close{background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:2px 6px}
+#export-close:hover{color:var(--text)}
+#export-code{flex:1;overflow-y:auto;padding:16px 18px;font-family:var(--font-mono);font-size:11.5px;line-height:1.7;color:var(--text);white-space:pre;background:var(--bg);border-bottom-left-radius:8px;border-bottom-right-radius:8px}
+#export-code::-webkit-scrollbar{width:5px}
+#export-code::-webkit-scrollbar-thumb{background:var(--border2)}
+
+/* HELP BAR */
+#help-bar{position:fixed;bottom:0;left:0;right:280px;height:28px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:14px;z-index:50;overflow:hidden}
+.help-item{font-size:10.5px;color:var(--text3);display:flex;align-items:center;gap:4px;flex-shrink:0}
+.help-key{background:var(--surface2);border:1px solid var(--border2);border-radius:3px;padding:1px 5px;font-family:var(--font-mono);font-size:10px;color:var(--text2)}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div class="logo">DTREE</div>
+  <div class="tb-sep"></div>
+  <input type="text" id="project-name" placeholder="Untitled" maxlength="48"/>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-undo" disabled title="Undo (Ctrl+Z)">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 8a5 5 0 1 0 1.5-3.5L2 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M2 3v4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Undo
+  </button>
+  <button class="tb-btn" id="btn-redo" disabled title="Redo (Ctrl+Y)">
+    Redo
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M13 8a5 5 0 1 1-1.5-3.5L14 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M14 3v4h-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-search" title="Search nodes (Ctrl+F)">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M10 10l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    Search
+  </button>
+  <button class="tb-btn" id="btn-layout" title="Auto-layout nodes">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="4" height="3" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="6" y="7" width="4" height="3" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="11" y="2" width="4" height="3" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="11" y="11" width="4" height="3" rx="1" stroke="currentColor" stroke-width="1.3"/></svg>
+    Layout
+  </button>
+  <button class="tb-btn" id="btn-fit">Fit</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-save">Save</button>
+  <button class="tb-btn" id="btn-load">Load</button>
+  <button class="tb-btn" id="btn-new">New</button>
+  <div class="tb-right">
+    <span id="node-count-badge" style="font-size:10px;color:var(--text3);font-family:var(--font-mono);padding-right:6px"></span>
+    <button class="fmt-tab active" data-fmt="json">JSON</button>
+    <button class="fmt-tab" data-fmt="ink">Ink</button>
+    <button class="fmt-tab" data-fmt="twine">Twine</button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn accent" id="btn-export">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M3 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      Export
+    </button>
+  </div>
+</div>
+
+<div id="search-bar">
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="color:var(--text3);flex-shrink:0"><circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M10 10l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+  <input type="text" id="search-input" placeholder="Search node text, speaker, ID..."/>
+  <div id="search-results"></div>
+  <span id="search-count"></span>
+  <button id="search-close">x</button>
+</div>
+
+<div id="canvas-wrap">
+  <div id="canvas">
+    <div id="grid-bg"></div>
+    <svg id="connections"></svg>
+    <div id="sel-box"></div>
+  </div>
+</div>
+
+<div id="panel">
+  <div id="panel-header">
+    <div id="panel-title">Properties</div>
+    <div id="panel-node-count"></div>
+  </div>
+  <div id="panel-body">
+    <div class="panel-empty">Click a node to edit it.<br><br>Right-click the canvas to add nodes.<br><br>Hold Shift and drag to select multiple.</div>
+  </div>
+</div>
+
+<div id="ctx-menu">
+  <div class="ctx-item" data-action="add-start"><span class="ctx-dot" style="background:#f7c44f"></span>Start node</div>
+  <div class="ctx-item" data-action="add-npc"><span class="ctx-dot" style="background:#4f8ef7"></span>NPC line</div>
+  <div class="ctx-item" data-action="add-player"><span class="ctx-dot" style="background:#4fca8e"></span>Player choice</div>
+  <div class="ctx-item" data-action="add-end"><span class="ctx-dot" style="background:#e85d75"></span>End node</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" data-action="duplicate-node" id="ctx-dup" style="display:none">Duplicate</div>
+  <div class="ctx-item" data-action="zoom-to-node" id="ctx-zoom" style="display:none">Zoom to node</div>
+  <div class="ctx-item" data-action="clear-connections" id="ctx-clear-conn" style="display:none">Clear connections</div>
+  <div class="ctx-sep" id="ctx-sep2" style="display:none"></div>
+  <div class="ctx-item danger" data-action="delete-node" id="ctx-delete" style="display:none">Delete</div>
+</div>
+
+<canvas id="temp-line"></canvas>
+
+<div id="export-modal">
+  <div id="export-box">
+    <div id="export-box-header">
+      <div id="export-box-title">Export</div>
+      <button id="export-copy-btn">Copy</button>
+      <button id="export-close">x</button>
+    </div>
+    <pre id="export-code"></pre>
+  </div>
+</div>
+
+<div id="help-bar">
+  <div class="help-item"><span class="help-key">Right-click</span>add node</div>
+  <div class="help-item"><span class="help-key">Port drag</span>connect</div>
+  <div class="help-item"><span class="help-key">Click wire</span>delete</div>
+  <div class="help-item"><span class="help-key">Shift+drag</span>multi-select</div>
+  <div class="help-item"><span class="help-key">Ctrl+D</span>duplicate</div>
+  <div class="help-item"><span class="help-key">Ctrl+Z/Y</span>undo/redo</div>
+  <div class="help-item"><span class="help-key">Ctrl+F</span>search</div>
+  <div class="help-item"><span class="help-key">Space+drag</span>pan</div>
+  <div class="help-item"><span class="help-key">Del</span>delete</div>
+</div>
+
+<div id="minimap"><canvas id="minimap-canvas"></canvas></div>
+<input type="file" id="file-input" accept=".json" style="display:none">
+<div id="toast"></div>
+
+<script>
+// ================================================================
+// STATE
+// ================================================================
+let nodes = [];
+let connections = [];
+let selectedNode = null;
+let multiSelected = new Set(); // node ids
+let nodeIdCounter = 1;
+let connIdCounter = 1;
+let draggingNode = null;
+let dragOffX = 0, dragOffY = 0;
+let multiDragOffsets = {};
+let panX = 60, panY = 60, zoom = 1;
+let isPanning = false, spaceDown = false;
+let panStartX = 0, panStartY = 0, panStartPanX = 0, panStartPanY = 0;
+let drawingConn = null;
+let currentFmt = 'json';
+// Selection box
+let isSelecting = false;
+let selStartX = 0, selStartY = 0;
+// Undo/redo
+let undoStack = [], redoStack = [];
+const MAX_UNDO = 60;
+
+const canvas = document.getElementById('canvas');
+const canvasWrap = document.getElementById('canvas-wrap');
+const svgConn = document.getElementById('connections');
+const selBox = document.getElementById('sel-box');
+
+// ================================================================
+// UNDO / REDO
+// ================================================================
+function snapshot() {
+  const state = JSON.stringify({ nodes, connections, nodeIdCounter, connIdCounter });
+  if (undoStack.length && undoStack[undoStack.length-1] === state) return;
+  undoStack.push(state);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack = [];
+  updateUndoButtons();
+}
+
+function restoreState(state) {
+  const d = JSON.parse(state);
+  nodes = d.nodes;
+  connections = d.connections;
+  nodeIdCounter = d.nodeIdCounter;
+  connIdCounter = d.connIdCounter;
+  canvas.querySelectorAll('.node').forEach(n => n.remove());
+  rerenderAll();
+  deselectAll();
+}
+
+function undo() {
+  if (undoStack.length < 2) return;
+  const current = undoStack.pop();
+  redoStack.push(current);
+  restoreState(undoStack[undoStack.length-1]);
+  updateUndoButtons();
+  toast('Undo');
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  const state = redoStack.pop();
+  undoStack.push(state);
+  restoreState(state);
+  updateUndoButtons();
+  toast('Redo');
+}
+
+function updateUndoButtons() {
+  document.getElementById('btn-undo').disabled = undoStack.length < 2;
+  document.getElementById('btn-redo').disabled = redoStack.length === 0;
+}
+
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-redo').addEventListener('click', redo);
+
+// ================================================================
+// UTILS
+// ================================================================
+function uid() { return 'n' + (nodeIdCounter++); }
+function cuid() { return 'c' + (connIdCounter++); }
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 1800);
+}
+function updateNodeCountBadge() {
+  const el = document.getElementById('node-count-badge');
+  el.textContent = nodes.length ? nodes.length + ' nodes' : '';
+}
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+// ================================================================
+// NODE CREATION
+// ================================================================
+function createNode(type, x, y, noSnapshot) {
+  const id = uid();
+  const node = { id, type,
+    label: type==='start'?'Start':type==='end'?'End':type==='npc'?'NPC':'Player',
+    speaker: type==='npc'?'NPC':type==='player'?'Player':'',
+    line:'', choices: type==='player'?[{id:'ch1',text:''}]:[],
+    condition:'', flags:'', color:'', x, y
+  };
+  nodes.push(node);
+  renderNode(node);
+  updateConnections();
+  updateMinimap();
+  updateNodeCountBadge();
+  if (!noSnapshot) snapshot();
+  return node;
+}
+
+function renderNode(node) {
+  let el = document.getElementById('node-' + node.id);
+  if (el) el.remove();
+  el = document.createElement('div');
+  el.className = 'node type-' + node.type + (node.color ? ' color-' + node.color : '');
+  el.id = 'node-' + node.id;
+  el.style.left = node.x + 'px';
+  el.style.top = node.y + 'px';
+
+  const lineText = node.line || (node.type==='start'?'Conversation start':node.type==='end'?'Conversation end':'Empty...');
+  const isEmpty = !node.line;
+
+  let choicesHTML = '';
+  if (node.type === 'player' && node.choices.length > 0) {
+    choicesHTML = '<div class="choices-list">' + node.choices.map((ch,i) => `
+      <div class="choice-row">
+        <span class="choice-text ${!ch.text?'empty':''}">${ch.text||'Choice '+(i+1)+'...'}</span>
+        <div class="choice-port ${isChoiceConnected(node.id,i)?'connected':''}" data-node="${node.id}" data-choice="${i}"></div>
+      </div>`).join('') + '</div>';
+  }
+
+  const hasIn = node.type !== 'start';
+  const hasOut = node.type !== 'end' && node.type !== 'player';
+
+  el.innerHTML = `
+    ${hasIn?`<div class="port in" data-node="${node.id}" data-port="in"></div>`:''}
+    ${hasOut?`<div class="port out" data-node="${node.id}" data-port="out"></div>`:''}
+    <div class="node-header">
+      <div class="node-type-dot"></div>
+      <div class="node-label">${esc(node.speaker||node.label)}</div>
+      <div class="node-id">${node.id}</div>
+    </div>
+    <div class="node-body">
+      <div class="node-line ${isEmpty?'empty':''}">${esc(lineText)}</div>
+    </div>
+    ${choicesHTML}
+    ${node.condition?`<div class="node-footer"><span class="node-tag">if: ${esc(node.condition)}</span></div>`:''}
+    ${node.flags?`<div class="node-footer"><span class="node-tag">flags: ${esc(node.flags)}</span></div>`:''}
+    <div class="node-color-strip"></div>
+  `;
+
+  canvas.appendChild(el);
+  bindNodeEvents(el, node);
+
+  if (selectedNode && selectedNode.id === node.id) el.classList.add('selected');
+  if (multiSelected.has(node.id)) el.classList.add('multi-selected');
+}
+
+function bindNodeEvents(el, node) {
+  el.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    if (e.target.classList.contains('port') || e.target.classList.contains('choice-port')) return;
+    e.stopPropagation();
+
+    if (e.shiftKey) {
+      // Toggle multi-select
+      if (multiSelected.has(node.id)) {
+        multiSelected.delete(node.id);
+        el.classList.remove('multi-selected');
+      } else {
+        multiSelected.add(node.id);
+        el.classList.add('multi-selected');
+        if (selectedNode) { multiSelected.add(selectedNode.id); document.getElementById('node-'+selectedNode.id)?.classList.add('multi-selected'); }
+        selectedNode = null;
+        document.querySelectorAll('.node.selected').forEach(n=>n.classList.remove('selected'));
+      }
+      renderPanel(null, true);
+      return;
+    }
+
+    // Single select
+    if (multiSelected.size > 0 && multiSelected.has(node.id)) {
+      // dragging multi-selection
+      draggingNode = node;
+      const rect = canvasWrap.getBoundingClientRect();
+      const cx = (e.clientX - rect.left - panX) / zoom;
+      const cy = (e.clientY - rect.top - panY) / zoom;
+      multiDragOffsets = {};
+      multiSelected.forEach(id => {
+        const n = nodes.find(n=>n.id===id);
+        if (n) multiDragOffsets[id] = { dx: cx - n.x, dy: cy - n.y };
+      });
+    } else {
+      multiSelected.clear();
+      document.querySelectorAll('.node.multi-selected').forEach(n=>n.classList.remove('multi-selected'));
+      selectNode(node);
+      draggingNode = node;
+      const rect = canvasWrap.getBoundingClientRect();
+      const cx = (e.clientX - rect.left - panX) / zoom;
+      const cy = (e.clientY - rect.top - panY) / zoom;
+      dragOffX = cx - node.x;
+      dragOffY = cy - node.y;
+    }
+  });
+
+  // Out port
+  const outPort = el.querySelector('.port.out');
+  if (outPort) {
+    outPort.addEventListener('mousedown', e => {
+      e.stopPropagation();
+      drawingConn = { fromNodeId: node.id, fromPortType: 'out', fromChoiceIndex: -1 };
+      showTempLine();
+    });
+  }
+
+  // Choice ports
+  el.querySelectorAll('.choice-port').forEach(cp => {
+    cp.addEventListener('mousedown', e => {
+      e.stopPropagation();
+      drawingConn = { fromNodeId: node.id, fromPortType: 'choice', fromChoiceIndex: parseInt(cp.dataset.choice) };
+      showTempLine();
+    });
+  });
+
+  // In port
+  const inPort = el.querySelector('.port.in');
+  if (inPort) {
+    inPort.addEventListener('mouseup', e => {
+      if (drawingConn && drawingConn.fromNodeId !== node.id) finishConnection(node.id);
+    });
+  }
+}
+
+// ================================================================
+// DUPLICATE
+// ================================================================
+function duplicateNode(node) {
+  snapshot();
+  const newNode = { ...JSON.parse(JSON.stringify(node)), id: uid(), x: node.x + 40, y: node.y + 40 };
+  nodes.push(newNode);
+  renderNode(newNode);
+  selectNode(newNode);
+  updateConnections();
+  updateMinimap();
+  updateNodeCountBadge();
+  snapshot();
+  toast('Duplicated');
+}
+
+function duplicateMulti() {
+  if (!multiSelected.size) return;
+  snapshot();
+  const idMap = {};
+  const newNodes = [];
+  multiSelected.forEach(id => {
+    const n = nodes.find(n=>n.id===id);
+    if (!n) return;
+    const newNode = { ...JSON.parse(JSON.stringify(n)), id: uid(), x: n.x + 40, y: n.y + 40 };
+    idMap[id] = newNode.id;
+    newNodes.push(newNode);
+    nodes.push(newNode);
+  });
+  multiSelected.clear();
+  newNodes.forEach(n => { renderNode(n); multiSelected.add(n.id); document.getElementById('node-'+n.id)?.classList.add('multi-selected'); });
+  updateConnections();
+  updateMinimap();
+  updateNodeCountBadge();
+  snapshot();
+  toast('Duplicated ' + newNodes.length + ' nodes');
+}
+
+// ================================================================
+// ZOOM TO NODE
+// ================================================================
+function zoomToNode(node) {
+  const wrap = canvasWrap.getBoundingClientRect();
+  zoom = 1.2;
+  panX = wrap.width/2 - node.x * zoom - 120;
+  panY = wrap.height/2 - node.y * zoom - 60;
+  applyTransform();
+}
+
+// ================================================================
+// CONNECTION DRAWING
+// ================================================================
+const tempCanvas = document.getElementById('temp-line');
+const tempCtx = tempCanvas.getContext('2d');
+let tempLineActive = false;
+
+function showTempLine() {
+  tempCanvas.style.display = 'block';
+  tempCanvas.width = window.innerWidth;
+  tempCanvas.height = window.innerHeight;
+  tempLineActive = true;
+}
+
+function getPortScreenPos(nodeId, portType, choiceIndex) {
+  const el = document.getElementById('node-' + nodeId);
+  if (!el) return null;
+  if (portType === 'out') {
+    const p = el.querySelector('.port.out');
+    if (!p) return null;
+    const r = p.getBoundingClientRect();
+    return { x: r.left + r.width/2, y: r.top + r.height/2 };
+  }
+  if (portType === 'in') {
+    const p = el.querySelector('.port.in');
+    if (!p) return null;
+    const r = p.getBoundingClientRect();
+    return { x: r.left + r.width/2, y: r.top + r.height/2 };
+  }
+  if (portType === 'choice') {
+    const cps = el.querySelectorAll('.choice-port');
+    const cp = cps[choiceIndex];
+    if (!cp) return null;
+    const r = cp.getBoundingClientRect();
+    return { x: r.left + r.width/2, y: r.top + r.height/2 };
+  }
+  return null;
+}
+
+function drawTempLine(mx, my) {
+  if (!tempLineActive || !drawingConn) return;
+  const pos = getPortScreenPos(drawingConn.fromNodeId, drawingConn.fromPortType, drawingConn.fromChoiceIndex);
+  if (!pos) return;
+  tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+  strokeBezier(tempCtx, pos.x, pos.y, mx, my, 'rgba(79,142,247,0.65)');
+}
+
+function strokeBezier(ctx, x1, y1, x2, y2, color) {
+  const dx = Math.max(Math.abs(x2-x1)*0.5, 60);
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);
+  ctx.bezierCurveTo(x1+dx,y1, x2-dx,y2, x2,y2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
+}
+
+function bezierPath(x1,y1,x2,y2) {
+  const dx = Math.max(Math.abs(x2-x1)*0.5, 60);
+  return `M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`;
+}
+
+function finishConnection(toNodeId) {
+  if (!drawingConn) return;
+  connections = connections.filter(c => !(c.fromNodeId===drawingConn.fromNodeId && c.fromPortType===drawingConn.fromPortType && c.fromChoiceIndex===drawingConn.fromChoiceIndex));
+  connections.push({ id:cuid(), fromNodeId:drawingConn.fromNodeId, fromPortType:drawingConn.fromPortType, fromChoiceIndex:drawingConn.fromChoiceIndex, toNodeId });
+  drawingConn = null;
+  tempLineActive = false;
+  tempCtx.clearRect(0,0,tempCanvas.width,tempCanvas.height);
+  tempCanvas.style.display = 'none';
+  rerenderAll();
+  snapshot();
+}
+
+function cancelDrawing() {
+  drawingConn = null;
+  tempLineActive = false;
+  tempCtx.clearRect(0,0,tempCanvas.width,tempCanvas.height);
+  tempCanvas.style.display = 'none';
+}
+
+function isChoiceConnected(nodeId, choiceIndex) {
+  return connections.some(c => c.fromNodeId===nodeId && c.fromChoiceIndex===choiceIndex);
+}
+
+// ================================================================
+// SVG CONNECTIONS
+// ================================================================
+function updateConnections() {
+  const rect = canvasWrap.getBoundingClientRect();
+  let html = '';
+  for (const conn of connections) {
+    const fromEl = document.getElementById('node-'+conn.fromNodeId);
+    const toEl = document.getElementById('node-'+conn.toNodeId);
+    if (!fromEl || !toEl) continue;
+    let fp, tp;
+    if (conn.fromPortType === 'out') {
+      const p = fromEl.querySelector('.port.out'); if (!p) continue;
+      const r = p.getBoundingClientRect();
+      fp = { x:(r.left+r.width/2-rect.left-panX)/zoom, y:(r.top+r.height/2-rect.top-panY)/zoom };
+    } else {
+      const cps = fromEl.querySelectorAll('.choice-port');
+      const cp = cps[conn.fromChoiceIndex]; if (!cp) continue;
+      const r = cp.getBoundingClientRect();
+      fp = { x:(r.left+r.width/2-rect.left-panX)/zoom, y:(r.top+r.height/2-rect.top-panY)/zoom };
+    }
+    const ip = toEl.querySelector('.port.in'); if (!ip) continue;
+    const ir = ip.getBoundingClientRect();
+    tp = { x:(ir.left+ir.width/2-rect.left-panX)/zoom, y:(ir.top+ir.height/2-rect.top-panY)/zoom };
+    const color = conn.fromPortType==='choice'?'#4fca8e':'#4f8ef7';
+    const d = bezierPath(fp.x,fp.y,tp.x,tp.y);
+    html += `<g class="conn-group" data-conn="${conn.id}" style="cursor:pointer">
+      <path d="${d}" stroke="${color}" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.75"/>
+      <path d="${d}" stroke="transparent" stroke-width="12" fill="none"/>
+    </g>`;
+  }
+  svgConn.innerHTML = html;
+  svgConn.querySelectorAll('.conn-group').forEach(g => {
+    g.addEventListener('click', e => {
+      e.stopPropagation();
+      connections = connections.filter(c => c.id !== g.dataset.conn);
+      rerenderAll(); snapshot();
+      toast('Connection removed');
+    });
+  });
+}
+
+// ================================================================
+// SELECT / DESELECT
+// ================================================================
+function selectNode(node) {
+  selectedNode = node;
+  multiSelected.clear();
+  document.querySelectorAll('.node').forEach(el => { el.classList.remove('selected'); el.classList.remove('multi-selected'); });
+  const el = document.getElementById('node-' + node.id);
+  if (el) el.classList.add('selected');
+  renderPanel(node);
+}
+
+function deselectAll() {
+  selectedNode = null;
+  multiSelected.clear();
+  document.querySelectorAll('.node').forEach(el => { el.classList.remove('selected'); el.classList.remove('multi-selected'); });
+  renderPanel(null);
+}
+
+// ================================================================
+// PANEL
+// ================================================================
+function renderPanel(node, isMulti) {
+  const body = document.getElementById('panel-body');
+  const title = document.getElementById('panel-title');
+  const countEl = document.getElementById('panel-node-count');
+
+  if (isMulti || (multiSelected.size > 0 && !node)) {
+    const count = multiSelected.size;
+    title.textContent = 'Multi-select';
+    countEl.textContent = count + ' nodes';
+    body.innerHTML = `
+      <div class="multi-panel-info">${count} nodes selected.<br>Drag any selected node to move all. Use the buttons below to act on the selection.</div>
+      <div class="p-group">
+        <button class="multi-action-btn" id="multi-dup">Duplicate all</button>
+        <button class="multi-action-btn danger" id="multi-del">Delete all</button>
+      </div>`;
+    document.getElementById('multi-dup')?.addEventListener('click', duplicateMulti);
+    document.getElementById('multi-del')?.addEventListener('click', () => {
+      snapshot();
+      multiSelected.forEach(id => {
+        nodes = nodes.filter(n=>n.id!==id);
+        connections = connections.filter(c=>c.fromNodeId!==id && c.toNodeId!==id);
+        document.getElementById('node-'+id)?.remove();
+      });
+      multiSelected.clear();
+      updateConnections(); updateMinimap(); updateNodeCountBadge();
+      deselectAll(); snapshot();
+      toast('Deleted selection');
+    });
+    return;
+  }
+
+  if (!node) {
+    title.textContent = 'Properties';
+    countEl.textContent = '';
+    body.innerHTML = '<div class="panel-empty">Click a node to edit it.<br><br>Right-click the canvas to add nodes.<br><br>Hold Shift and drag to select multiple.</div>';
+    return;
+  }
+
+  title.textContent = 'Node — ' + node.id;
+  countEl.textContent = node.type;
+
+  const colorOptions = ['none','red','orange','yellow','green','purple','pink'];
+  const colorHex = {none:'',red:'#c0392b',orange:'#c0702b',yellow:'#b8a020',green:'#2b9c4a',purple:'#7b4fc0',pink:'#c04080'};
+
+  const showLine = node.type !== 'start' && node.type !== 'end';
+
+  let choiceEditors = '';
+  if (node.type === 'player') {
+    choiceEditors = `<div class="p-group">
+      <div class="p-label">Choices</div>
+      <div class="choice-editor" id="choice-editor">
+        ${node.choices.map((ch,i) => `
+          <div class="choice-edit-row">
+            <input type="text" placeholder="Choice ${i+1}..." value="${esc(ch.text)}" data-choice="${i}" class="choice-input"/>
+            <button class="choice-del" data-choice="${i}">x</button>
+          </div>`).join('')}
+      </div>
+      <button class="add-choice-btn" id="add-choice-btn">+ Add choice</button>
+    </div>`;
+  }
+
+  body.innerHTML = `
+    <div class="p-group">
+      <div class="p-label">Type</div>
+      <select class="p-select" id="p-type">
+        <option value="start" ${node.type==='start'?'selected':''}>Start</option>
+        <option value="npc" ${node.type==='npc'?'selected':''}>NPC line</option>
+        <option value="player" ${node.type==='player'?'selected':''}>Player choice</option>
+        <option value="end" ${node.type==='end'?'selected':''}>End</option>
+      </select>
+    </div>
+    ${showLine?`
+    <div class="p-group">
+      <div class="p-label">Speaker</div>
+      <input type="text" class="p-input" id="p-speaker" value="${esc(node.speaker)}" placeholder="e.g. Guard, Merchant..."/>
+    </div>
+    <div class="p-group">
+      <div class="p-label">Dialogue line</div>
+      <textarea class="p-textarea" id="p-line" placeholder="What they say...">${esc(node.line)}</textarea>
+    </div>`:''}
+    ${choiceEditors}
+    <div class="p-group">
+      <div class="p-label">Condition</div>
+      <input type="text" class="p-input" id="p-condition" value="${esc(node.condition)}" placeholder="e.g. player.rep > 5"/>
+    </div>
+    <div class="p-group">
+      <div class="p-label">Set flags</div>
+      <input type="text" class="p-input" id="p-flags" value="${esc(node.flags)}" placeholder="e.g. met_guard, quest_started"/>
+    </div>
+    <div class="p-group">
+      <div class="p-label">Color label</div>
+      <div class="color-swatches">
+        ${colorOptions.map(c => `<div class="color-swatch ${c==='none'?'none':''} ${node.color===c||(c==='none'&&!node.color)?'active':''}" data-color="${c}" title="${c}" style="${c!=='none'?'background:'+colorHex[c]:''}" ></div>`).join('')}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="dup-node-btn" id="p-dup">Duplicate</button>
+      <button class="delete-node-btn" id="p-delete" style="flex:1">Delete</button>
+    </div>
+    <button class="multi-action-btn" id="p-zoom" style="margin-top:-6px">Zoom to node</button>
+  `;
+
+  // Bind inputs
+  const live = (id, prop, noSnap) => {
+    const el = document.getElementById(id); if (!el) return;
+    el.addEventListener('input', () => { node[prop] = el.value; rerenderNode(node); if (!noSnap) scheduleSnapshot(); });
+  };
+  live('p-speaker','speaker',true);
+  live('p-line','line',true);
+  live('p-condition','condition',true);
+  live('p-flags','flags',true);
+
+  document.getElementById('p-type')?.addEventListener('change', e => {
+    node.type = e.target.value;
+    if (node.type==='player' && !node.choices.length) node.choices = [{id:'ch1',text:''}];
+    rerenderNode(node); renderPanel(node); snapshot();
+  });
+
+  body.querySelectorAll('.choice-input').forEach(inp => {
+    inp.addEventListener('input', () => { node.choices[parseInt(inp.dataset.choice)].text = inp.value; rerenderNode(node); scheduleSnapshot(); });
+  });
+  body.querySelectorAll('.choice-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt(btn.dataset.choice);
+      connections = connections.filter(c => !(c.fromNodeId===node.id && c.fromChoiceIndex===i));
+      connections = connections.map(c => { if (c.fromNodeId===node.id && c.fromChoiceIndex>i) return {...c, fromChoiceIndex:c.fromChoiceIndex-1}; return c; });
+      node.choices.splice(i,1);
+      rerenderNode(node); renderPanel(node); snapshot();
+    });
+  });
+  document.getElementById('add-choice-btn')?.addEventListener('click', () => {
+    node.choices.push({id:'ch'+(node.choices.length+1),text:''});
+    rerenderNode(node); renderPanel(node); snapshot();
+  });
+
+  body.querySelectorAll('.color-swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      const c = sw.dataset.color;
+      node.color = c==='none' ? '' : c;
+      body.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+      rerenderNode(node); snapshot();
+    });
+  });
+
+  document.getElementById('p-dup')?.addEventListener('click', () => duplicateNode(node));
+  document.getElementById('p-delete')?.addEventListener('click', () => deleteNode(node.id));
+  document.getElementById('p-zoom')?.addEventListener('click', () => zoomToNode(node));
+
+  // Blur-based snapshot for text fields
+  ['p-speaker','p-line','p-condition','p-flags'].forEach(id => {
+    document.getElementById(id)?.addEventListener('blur', () => snapshot());
+  });
+}
+
+let snapshotTimer = null;
+function scheduleSnapshot() { clearTimeout(snapshotTimer); snapshotTimer = setTimeout(snapshot, 800); }
+
+function rerenderNode(node) { renderNode(node); updateConnections(); updateMinimap(); }
+function rerenderAll() { nodes.forEach(n => renderNode(n)); updateConnections(); updateMinimap(); updateNodeCountBadge(); }
+
+// ================================================================
+// DELETE
+// ================================================================
+function deleteNode(id) {
+  snapshot();
+  nodes = nodes.filter(n => n.id !== id);
+  connections = connections.filter(c => c.fromNodeId!==id && c.toNodeId!==id);
+  document.getElementById('node-'+id)?.remove();
+  if (selectedNode?.id === id) deselectAll();
+  updateConnections(); updateMinimap(); updateNodeCountBadge();
+  snapshot();
+  toast('Node deleted');
+}
+
+// ================================================================
+// ZOOM / PAN
+// ================================================================
+function applyTransform() {
+  canvas.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`;
+  updateConnections(); updateMinimap();
+}
+
+canvasWrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const d = e.deltaY>0?0.9:1.1;
+  const rect = canvasWrap.getBoundingClientRect();
+  const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+  panX = mx-(mx-panX)*d; panY = my-(my-panY)*d;
+  zoom = Math.max(0.2, Math.min(2.5, zoom*d));
+  applyTransform();
+}, {passive:false});
+
+// Selection box dragging
+let selActive = false;
+
+canvasWrap.addEventListener('mousedown', e => {
+  if (e.button===1 || (e.button===0 && spaceDown)) {
+    isPanning = true;
+    panStartX=e.clientX; panStartY=e.clientY; panStartPanX=panX; panStartPanY=panY;
+    canvasWrap.style.cursor='grabbing'; e.preventDefault(); return;
+  }
+  if (e.button===0 && !e.target.closest('.node') && !drawingConn) {
+    if (!e.shiftKey) {
+      deselectAll();
+    }
+    // Start selection box
+    const rect = canvasWrap.getBoundingClientRect();
+    selStartX = (e.clientX-rect.left-panX)/zoom;
+    selStartY = (e.clientY-rect.top-panY)/zoom;
+    selActive = true;
+    selBox.style.display = 'block';
+    selBox.style.left = selStartX+'px'; selBox.style.top = selStartY+'px';
+    selBox.style.width = '0'; selBox.style.height = '0';
+  }
+});
+
+document.addEventListener('mousemove', e => {
+  if (isPanning) {
+    panX = panStartPanX+(e.clientX-panStartX);
+    panY = panStartPanY+(e.clientY-panStartY);
+    applyTransform(); return;
+  }
+  if (draggingNode) {
+    const rect = canvasWrap.getBoundingClientRect();
+    const cx = (e.clientX-rect.left-panX)/zoom;
+    const cy = (e.clientY-rect.top-panY)/zoom;
+    if (multiSelected.size > 1 && multiSelected.has(draggingNode.id)) {
+      multiSelected.forEach(id => {
+        const n = nodes.find(n=>n.id===id);
+        if (!n || !multiDragOffsets[id]) return;
+        n.x = cx - multiDragOffsets[id].dx;
+        n.y = cy - multiDragOffsets[id].dy;
+        const el = document.getElementById('node-'+id);
+        if (el) { el.style.left=n.x+'px'; el.style.top=n.y+'px'; }
+      });
+    } else {
+      draggingNode.x = cx-dragOffX;
+      draggingNode.y = cy-dragOffY;
+      const el = document.getElementById('node-'+draggingNode.id);
+      if (el) { el.style.left=draggingNode.x+'px'; el.style.top=draggingNode.y+'px'; }
+    }
+    updateConnections(); updateMinimap(); return;
+  }
+  if (tempLineActive) { drawTempLine(e.clientX, e.clientY); return; }
+  if (selActive) {
+    const rect = canvasWrap.getBoundingClientRect();
+    const cx = (e.clientX-rect.left-panX)/zoom;
+    const cy = (e.clientY-rect.top-panY)/zoom;
+    const x = Math.min(cx,selStartX), y = Math.min(cy,selStartY);
+    const w = Math.abs(cx-selStartX), h = Math.abs(cy-selStartY);
+    selBox.style.left=x+'px'; selBox.style.top=y+'px';
+    selBox.style.width=w+'px'; selBox.style.height=h+'px';
+    // Live highlight
+    const x2=x+w, y2=y+h;
+    nodes.forEach(n => {
+      const el = document.getElementById('node-'+n.id); if (!el) return;
+      const inside = n.x>=x && n.y>=y && n.x+220<=x2 && n.y+80<=y2;
+      if (inside) { multiSelected.add(n.id); el.classList.add('multi-selected'); }
+      else if (!e.shiftKey) { multiSelected.delete(n.id); el.classList.remove('multi-selected'); }
+    });
+    if (multiSelected.size > 0) renderPanel(null, true);
+  }
+});
+
+document.addEventListener('mouseup', e => {
+  if (draggingNode) { snapshot(); }
+  isPanning = false;
+  if (draggingNode) draggingNode = null;
+  canvasWrap.style.cursor = spaceDown?'grab':'default';
+  if (tempLineActive) cancelDrawing();
+  if (selActive) {
+    selActive = false;
+    selBox.style.display='none';
+    if (multiSelected.size===1) {
+      const id = [...multiSelected][0];
+      const n = nodes.find(n=>n.id===id);
+      if (n) { multiSelected.clear(); document.getElementById('node-'+id)?.classList.remove('multi-selected'); selectNode(n); }
+    } else if (multiSelected.size===0) { deselectAll(); }
+  }
+});
+
+// ================================================================
+// KEYBOARD
+// ================================================================
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  if (tag==='INPUT'||tag==='TEXTAREA') return;
+  if ((e.ctrlKey||e.metaKey) && e.key==='z') { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey||e.metaKey) && (e.key==='y'||(e.shiftKey&&e.key==='z'))) { e.preventDefault(); redo(); return; }
+  if ((e.ctrlKey||e.metaKey) && e.key==='s') { e.preventDefault(); saveProject(); return; }
+  if ((e.ctrlKey||e.metaKey) && e.key==='f') { e.preventDefault(); openSearch(); return; }
+  if ((e.ctrlKey||e.metaKey) && e.key==='d') { e.preventDefault();
+    if (multiSelected.size>1) duplicateMulti();
+    else if (selectedNode) duplicateNode(selectedNode);
+    return;
+  }
+  if (e.key==='Delete'||e.key==='Backspace') {
+    if (multiSelected.size>1) {
+      snapshot();
+      multiSelected.forEach(id => {
+        nodes=nodes.filter(n=>n.id!==id); connections=connections.filter(c=>c.fromNodeId!==id&&c.toNodeId!==id);
+        document.getElementById('node-'+id)?.remove();
+      });
+      multiSelected.clear(); updateConnections(); updateMinimap(); updateNodeCountBadge(); deselectAll(); snapshot();
+    } else if (selectedNode) deleteNode(selectedNode.id);
+    return;
+  }
+  if (e.key==='Escape') { closeSearch(); deselectAll(); return; }
+  if (e.code==='Space') { spaceDown=true; canvasWrap.style.cursor='grab'; e.preventDefault(); }
+});
+
+document.addEventListener('keyup', e => {
+  if (e.code==='Space') { spaceDown=false; canvasWrap.style.cursor='default'; }
+});
+
+// ================================================================
+// SEARCH
+// ================================================================
+function openSearch() {
+  const bar = document.getElementById('search-bar');
+  bar.classList.add('open');
+  canvasWrap.classList.add('search-open');
+  document.getElementById('search-input').focus();
+  runSearch();
+}
+
+function closeSearch() {
+  document.getElementById('search-bar').classList.remove('open');
+  canvasWrap.classList.remove('search-open');
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-results').innerHTML = '';
+  document.getElementById('search-count').textContent = '';
+}
+
+function runSearch() {
+  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  const results = document.getElementById('search-results');
+  const count = document.getElementById('search-count');
+  results.innerHTML = '';
+  if (!q) { count.textContent = ''; return; }
+  const matches = nodes.filter(n =>
+    n.line?.toLowerCase().includes(q) ||
+    n.speaker?.toLowerCase().includes(q) ||
+    n.id.toLowerCase().includes(q) ||
+    n.choices?.some(c => c.text?.toLowerCase().includes(q))
+  );
+  count.textContent = matches.length + ' found';
+  matches.forEach(n => {
+    const chip = document.createElement('div');
+    chip.className = 'search-result-chip';
+    chip.textContent = n.id + (n.speaker ? ' · ' + n.speaker : '');
+    chip.title = n.line || n.type;
+    chip.addEventListener('click', () => { selectNode(n); zoomToNode(n); });
+    results.appendChild(chip);
+  });
+}
+
+document.getElementById('search-input').addEventListener('input', runSearch);
+document.getElementById('btn-search').addEventListener('click', () => {
+  const bar = document.getElementById('search-bar');
+  bar.classList.contains('open') ? closeSearch() : openSearch();
+});
+document.getElementById('search-close').addEventListener('click', closeSearch);
+
+// ================================================================
+// AUTO-LAYOUT (Sugiyama-inspired left-to-right BFS layering)
+// ================================================================
+function autoLayout() {
+  if (!nodes.length) return;
+  snapshot();
+  const startNode = nodes.find(n=>n.type==='start') || nodes[0];
+  const layers = {};
+  const visited = new Set();
+  const queue = [[startNode.id, 0]];
+  while (queue.length) {
+    const [id, depth] = queue.shift();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    if (!layers[depth]) layers[depth] = [];
+    layers[depth].push(id);
+    connections.filter(c=>c.fromNodeId===id).forEach(c => {
+      if (!visited.has(c.toNodeId)) queue.push([c.toNodeId, depth+1]);
+    });
+  }
+  // Any unvisited nodes go in their own column
+  nodes.filter(n=>!visited.has(n.id)).forEach((n,i) => {
+    const d = Object.keys(layers).length + i;
+    if (!layers[d]) layers[d] = [];
+    layers[d].push(n.id);
+  });
+  const COL_W = 300, ROW_H = 140, START_X = 80, START_Y = 80;
+  Object.entries(layers).forEach(([depth, ids]) => {
+    const totalH = ids.length * ROW_H;
+    const startY = START_Y - totalH/2 + ROW_H/2;
+    ids.forEach((id, i) => {
+      const n = nodes.find(n=>n.id===id); if (!n) return;
+      n.x = START_X + parseInt(depth) * COL_W;
+      n.y = startY + i * ROW_H;
+      const el = document.getElementById('node-'+id);
+      if (el) { el.style.left=n.x+'px'; el.style.top=n.y+'px'; }
+    });
+  });
+  updateConnections(); updateMinimap(); snapshot();
+  setTimeout(() => { document.getElementById('btn-fit').click(); }, 50);
+  toast('Layout applied');
+}
+
+document.getElementById('btn-layout').addEventListener('click', autoLayout);
+
+// ================================================================
+// FIT VIEW
+// ================================================================
+document.getElementById('btn-fit').addEventListener('click', () => {
+  if (!nodes.length) return;
+  const xs=nodes.map(n=>n.x), ys=nodes.map(n=>n.y);
+  const minX=Math.min(...xs)-40, minY=Math.min(...ys)-40;
+  const maxX=Math.max(...xs)+280, maxY=Math.max(...ys)+180;
+  const wrap=canvasWrap.getBoundingClientRect();
+  const sx=wrap.width/(maxX-minX), sy=wrap.height/(maxY-minY);
+  zoom=Math.max(0.2,Math.min(1.5,Math.min(sx,sy)*0.88));
+  panX=(wrap.width-(maxX-minX)*zoom)/2-minX*zoom;
+  panY=(wrap.height-(maxY-minY)*zoom)/2-minY*zoom;
+  applyTransform();
+});
+
+// ================================================================
+// FORMAT TABS
+// ================================================================
+document.querySelectorAll('.fmt-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.fmt-tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    currentFmt = tab.dataset.fmt;
+  });
+});
+
+// ================================================================
+// CONTEXT MENU
+// ================================================================
+const ctxMenu = document.getElementById('ctx-menu');
+let ctxPos = {x:0,y:0}, ctxNode = null;
+
+canvasWrap.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const rect = canvasWrap.getBoundingClientRect();
+  ctxPos.x = (e.clientX-rect.left-panX)/zoom;
+  ctxPos.y = (e.clientY-rect.top-panY)/zoom;
+  ctxNode = null;
+  const targetEl = e.target.closest('.node');
+  if (targetEl) ctxNode = nodes.find(n=>n.id===targetEl.id.replace('node-',''));
+  const show = !!ctxNode;
+  document.getElementById('ctx-delete').style.display = show?'':'none';
+  document.getElementById('ctx-dup').style.display = show?'':'none';
+  document.getElementById('ctx-zoom').style.display = show?'':'none';
+  document.getElementById('ctx-clear-conn').style.display = show?'':'none';
+  document.getElementById('ctx-sep2').style.display = show?'':'none';
+  ctxMenu.style.left=e.clientX+'px'; ctxMenu.style.top=e.clientY+'px'; ctxMenu.style.display='block';
+});
+
+document.addEventListener('click', () => ctxMenu.style.display='none');
+
+ctxMenu.querySelectorAll('.ctx-item').forEach(item => {
+  item.addEventListener('click', e => {
+    e.stopPropagation();
+    const action = item.dataset.action;
+    if (action==='add-start') createNode('start',ctxPos.x,ctxPos.y);
+    if (action==='add-npc') createNode('npc',ctxPos.x,ctxPos.y);
+    if (action==='add-player') createNode('player',ctxPos.x,ctxPos.y);
+    if (action==='add-end') createNode('end',ctxPos.x,ctxPos.y);
+    if (action==='duplicate-node'&&ctxNode) duplicateNode(ctxNode);
+    if (action==='zoom-to-node'&&ctxNode) zoomToNode(ctxNode);
+    if (action==='delete-node'&&ctxNode) deleteNode(ctxNode.id);
+    if (action==='clear-connections'&&ctxNode) {
+      snapshot();
+      connections=connections.filter(c=>c.fromNodeId!==ctxNode.id&&c.toNodeId!==ctxNode.id);
+      rerenderAll(); snapshot(); toast('Connections cleared');
+    }
+    ctxMenu.style.display='none';
+  });
+});
+
+canvasWrap.addEventListener('click', e => { if (!e.target.closest('.node') && !selActive) deselectAll(); });
+
+// ================================================================
+// EXPORT
+// ================================================================
+document.getElementById('btn-export').addEventListener('click', () => {
+  document.getElementById('export-code').textContent = exportTree(currentFmt);
+  document.getElementById('export-box-title').textContent = 'Export / ' + currentFmt.toUpperCase();
+  document.getElementById('export-modal').classList.add('open');
+});
+document.getElementById('export-close').addEventListener('click', () => document.getElementById('export-modal').classList.remove('open'));
+document.getElementById('export-modal').addEventListener('click', e => { if (e.target===document.getElementById('export-modal')) document.getElementById('export-modal').classList.remove('open'); });
+document.getElementById('export-copy-btn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('export-code').textContent).then(()=>toast('Copied'));
+});
+
+function getOutConn(nodeId, portType, choiceIndex) {
+  return connections.find(c=>c.fromNodeId===nodeId && c.fromPortType===portType && (portType!=='choice'||c.fromChoiceIndex===choiceIndex));
+}
+
+function exportTree(fmt) {
+  if (fmt==='json') return exportJSON();
+  if (fmt==='ink') return exportInk();
+  if (fmt==='twine') return exportTwine();
+  return '';
+}
+
+function exportJSON() {
+  const name = document.getElementById('project-name').value || 'untitled';
+  return JSON.stringify({
+    id: name.toLowerCase().replace(/\s+/g,'_'),
+    name,
+    nodes: nodes.map(n => {
+      const base = { id:n.id, type:n.type, speaker:n.speaker||null, line:n.line||null, condition:n.condition||null, flags:n.flags?n.flags.split(',').map(f=>f.trim()).filter(Boolean):[] };
+      if (n.type==='player') { base.choices=n.choices.map((ch,i)=>({ text:ch.text, next:(getOutConn(n.id,'choice',i)||{}).toNodeId||null })); }
+      else { base.next=(getOutConn(n.id,'out',-1)||{}).toNodeId||null; }
+      return base;
+    })
+  }, null, 2);
+}
+
+function exportInk() {
+  const name = (document.getElementById('project-name').value||'dialogue').toLowerCase().replace(/\s+/g,'_');
+  let out = `=== ${name} ===\n\n`;
+  const start = nodes.find(n=>n.type==='start');
+  if (start) { const c=getOutConn(start.id,'out',-1); out+=`-> ${c?'node_'+c.toNodeId:'END'}\n\n`; }
+  for (const n of nodes) {
+    if (n.type==='start') continue;
+    out += `= node_${n.id}\n`;
+    if (n.condition) out += `{ ${n.condition}:\n`;
+    if (n.type==='end') { out+='-> END\n'; }
+    else if (n.type==='npc') { const c=getOutConn(n.id,'out',-1); out+=`${n.speaker||'NPC'}: ${n.line||'...'}\n-> ${c?'node_'+c.toNodeId:'END'}\n`; }
+    else if (n.type==='player') { n.choices.forEach((ch,i)=>{ const c=getOutConn(n.id,'choice',i); out+=`* ${ch.text||'[choice '+(i+1)+']'}\n  -> ${c?'node_'+c.toNodeId:'END'}\n`; }); }
+    if (n.condition) out += '}\n';
+    if (n.flags) out += n.flags.split(',').map(f=>`~ ${f.trim()} = true`).join('\n') + '\n';
+    out += '\n';
+  }
+  return out;
+}
+
+function exportTwine() {
+  const name = document.getElementById('project-name').value||'Dialogue';
+  let out = `:: StoryTitle\n${name}\n\n:: StoryData\n{\n  "ifid": "dtree-${Date.now()}",\n  "format": "SugarCube",\n  "format-version": "2.36.1"\n}\n\n`;
+  const start = nodes.find(n=>n.type==='start');
+  if (start) { const c=getOutConn(start.id,'out',-1); out+=`:: Start\n${c?`[[Continue|node_${c.toNodeId}]]`:'The end.'}\n\n`; }
+  for (const n of nodes) {
+    if (n.type==='start') continue;
+    out += `:: node_${n.id}\n`;
+    if (n.condition) out += `<<if ${n.condition}>>\n`;
+    if (n.type==='end') { out += `''End of conversation.''\n`; }
+    else if (n.type==='npc') { const c=getOutConn(n.id,'out',-1); out+=`''${n.speaker||'NPC'}:'' ${n.line||'...'}\n\n${c?`[[Continue|node_${c.toNodeId}]]`:'[[End conversation|End]]'}\n`; }
+    else if (n.type==='player') { n.choices.forEach((ch,i)=>{ const c=getOutConn(n.id,'choice',i); out+=`[[${ch.text||'Choice '+(i+1)}|${c?'node_'+c.toNodeId:'End'}]]\n`; }); }
+    if (n.condition) out += `<<endif>>\n`;
+    if (n.flags) n.flags.split(',').forEach(f=>{ f=f.trim(); if(f) out+=`<<set $${f} to true>>\n`; });
+    out += '\n';
+  }
+  out += `:: End\nThe conversation ends.\n`;
+  return out;
+}
+
+// ================================================================
+// SAVE / LOAD
+// ================================================================
+function saveProject() {
+  const data = { version:2, name:document.getElementById('project-name').value, nodes, connections, nodeIdCounter, connIdCounter, panX, panY, zoom };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+  a.download = (data.name||'dialogue') + '.dtree.json';
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('Saved');
+}
+
+document.getElementById('btn-save').addEventListener('click', saveProject);
+document.getElementById('btn-load').addEventListener('click', () => document.getElementById('file-input').click());
+document.getElementById('file-input').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => { try { loadProject(JSON.parse(ev.target.result)); toast('Loaded'); } catch { toast('Failed to load'); } };
+  reader.readAsText(file); e.target.value='';
+});
+
+function loadProject(data) {
+  nodes=data.nodes||[]; connections=data.connections||[];
+  nodeIdCounter=data.nodeIdCounter||100; connIdCounter=data.connIdCounter||100;
+  panX=data.panX||60; panY=data.panY||60; zoom=data.zoom||1;
+  document.getElementById('project-name').value=data.name||'';
+  canvas.querySelectorAll('.node').forEach(n=>n.remove());
+  rerenderAll(); applyTransform(); deselectAll();
+  undoStack=[JSON.stringify({nodes,connections,nodeIdCounter,connIdCounter})]; redoStack=[];
+  updateUndoButtons();
+}
+
+document.getElementById('btn-new').addEventListener('click', () => {
+  if (nodes.length && !confirm('Start new project? Unsaved work will be lost.')) return;
+  nodes=[]; connections=[]; nodeIdCounter=1; connIdCounter=1;
+  canvas.querySelectorAll('.node').forEach(n=>n.remove()); svgConn.innerHTML='';
+  document.getElementById('project-name').value='';
+  deselectAll(); panX=60; panY=60; zoom=1;
+  applyTransform(); updateMinimap(); updateNodeCountBadge();
+  undoStack=[]; redoStack=[]; updateUndoButtons();
+  toast('New project');
+});
+
+// ================================================================
+// MINIMAP
+// ================================================================
+function updateMinimap() {
+  const mc = document.getElementById('minimap-canvas');
+  const ctx = mc.getContext('2d');
+  mc.width=150; mc.height=96;
+  ctx.clearRect(0,0,150,96);
+  if (!nodes.length) return;
+  const xs=nodes.map(n=>n.x), ys=nodes.map(n=>n.y);
+  const minX=Math.min(...xs)-20, minY=Math.min(...ys)-20;
+  const maxX=Math.max(...xs)+260, maxY=Math.max(...ys)+140;
+  const s = Math.min(150/(maxX-minX), 96/(maxY-minY)) * 0.85;
+  const colors = {start:'#c47a20',end:'#8a2d50',npc:'#2d4a8a',player:'#2d7a5a'};
+  for (const n of nodes) {
+    ctx.fillStyle = colors[n.type]||'#333';
+    ctx.fillRect((n.x-minX)*s+5, (n.y-minY)*s+5, 18, 9);
+  }
+  // Draw viewport rect
+  const wrap = canvasWrap.getBoundingClientRect();
+  const vpX = (-panX/zoom - minX) * s + 5;
+  const vpY = (-panY/zoom - minY) * s + 5;
+  const vpW = (wrap.width/zoom) * s;
+  const vpH = (wrap.height/zoom) * s;
+  ctx.strokeStyle = 'rgba(79,142,247,0.5)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(vpX, vpY, vpW, vpH);
+}
+
+// ================================================================
+// INIT — starter tree
+// ================================================================
+applyTransform();
+setTimeout(() => {
+  const s  = createNode('start',  100, 300, true);
+  const n1 = createNode('npc',    360, 300, true);
+  const p1 = createNode('player', 630, 300, true);
+  const n2 = createNode('npc',    900, 160, true);
+  const n3 = createNode('npc',    900, 440, true);
+  const e1 = createNode('end',   1170, 160, true);
+  const e2 = createNode('end',   1170, 440, true);
+
+  n1.speaker='Relic Dealer'; n1.line="You got coin? No coin, no talk.";
+  p1.choices=[{id:'ch1',text:"Not here to buy. Ask around lately?"},{id:'ch2',text:"Fifty silver. Where did Korrath go?"}];
+  n2.speaker='Relic Dealer'; n2.line="Asking around gets people killed. Figure that out yourself.";
+  n3.speaker='Relic Dealer'; n3.line="Korrath left three nights back. Took the river road north. That's all I know.";
+
+  [[s.id,'out',-1,n1.id],[n1.id,'out',-1,p1.id],[p1.id,'choice',0,n2.id],[p1.id,'choice',1,n3.id],[n2.id,'out',-1,e1.id],[n3.id,'out',-1,e2.id]]
+    .forEach(([from,pt,ci,to]) => connections.push({id:cuid(),fromNodeId:from,fromPortType:pt,fromChoiceIndex:ci,toNodeId:to}));
+
+  rerenderAll();
+  snapshot();
+}, 60);
+</script>
+</body>
+</html>
