@@ -1,5 +1,7 @@
 # Dialogue Tree Editor
 
+<img width="1920" height="1080" alt="Dialogue Tree Editor" src="https://github.com/user-attachments/assets/faa0b01d-3daf-46d5-9c4d-16438c8e984b" />
+
 A visual node editor for writing NPC dialogue trees. You write the lines, it handles the structure. No internet required, no accounts, no installs. One HTML file.
 
 Exports to Ink, Twine/Twee, and JSON.
